@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ask Rainman</title>
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <section class="upload-shell" id="upload-shell">
+    <div class="upload-card">
+      <header class="upload-header">
+        <h1>Ask Rainman</h1>
+        <p>先上传 7 个 CSV，再在浏览器本地运行仿真。页面关闭后，数据不会保存。</p>
+      </header>
+      <div class="upload-grid" id="upload-grid">
+        <label class="upload-field">
+          <span>products.csv</span>
+          <input type="file" id="csv-products" accept=".csv,text/csv" />
+        </label>
+        <label class="upload-field">
+          <span>materials.csv</span>
+          <input type="file" id="csv-materials" accept=".csv,text/csv" />
+        </label>
+        <label class="upload-field">
+          <span>bom.csv</span>
+          <input type="file" id="csv-bom" accept=".csv,text/csv" />
+        </label>
+        <label class="upload-field">
+          <span>demand-notices.csv</span>
+          <input type="file" id="csv-demand-notices" accept=".csv,text/csv" />
+        </label>
+        <label class="upload-field">
+          <span>safety-stock.csv</span>
+          <input type="file" id="csv-safety-stock" accept=".csv,text/csv" />
+        </label>
+        <label class="upload-field">
+          <span>production-policy.csv</span>
+          <input type="file" id="csv-production-policy" accept=".csv,text/csv" />
+        </label>
+        <label class="upload-field">
+          <span>supplier-policy.csv</span>
+          <input type="file" id="csv-supplier-policy" accept=".csv,text/csv" />
+        </label>
+      </div>
+      <div class="upload-actions">
+        <button type="button" id="btn-upload-start" class="btn btn-primary">加载 CSV 并启动</button>
+        </div>
+      <p class="upload-status" id="upload-status">等待上传。</p>
+      <ul class="upload-notes">
+        <li>字段名需与文件名对应；文件顺序无要求。</li>
+        <li>CSV 仅在当前浏览器内存中使用，不写入服务器。</li>
+        <li>CSV 仅在当前浏览器内存中使用，页面公开不代表数据公开。</li>
+      </ul>
+    </div>
+  </section>
+
+  <header class="app-header ui-hidden" id="app-header">
+    <div class="brand">
+      <h1>Ask Rainman</h1>
+      <p class="subtitle">完整需求通报（含逐月更新）</p>
+    </div>
+    <div class="sim-status">
+      <span class="label">仿真日期</span>
+      <strong id="sim-date">—</strong>
+      <span id="sim-state" class="badge badge-idle">就绪</span>
+    </div>
+  </header>
+
+  <main class="app-main ui-hidden" id="app-main">
+    <aside class="panel panel-controls">
+      <h2>仿真控制</h2>
+      <div class="control-row">
+        <label for="start-date">起始日期</label>
+        <input type="date" id="start-date" value="2026-01-01" />
+      </div>
+      <div class="btn-group">
+        <button type="button" id="btn-run" class="btn btn-primary">运行</button>
+        <button type="button" id="btn-pause" class="btn" disabled>暂停</button>
+        <button type="button" id="btn-step" class="btn">步进 1 天</button>
+        <button type="button" id="btn-step-back" class="btn" disabled>后退 1 天</button>
+        <button type="button" id="btn-reset" class="btn btn-ghost">重置</button>
+      </div>
+      <div class="control-row">
+        <label for="sim-speed">自动速度（毫秒/天）</label>
+        <input type="range" id="sim-speed" min="100" max="2000" step="100" value="600" />
+        <span id="sim-speed-val">600</span>
+      </div>
+      <div class="control-row">
+        <label for="jump-date">跳转到日期</label>
+        <div class="control-inline">
+          <input type="date" id="jump-date" value="2026-03-01" />
+          <button type="button" id="btn-jump" class="btn">跳转</button>
+        </div>
+        <p class="hint-inline">自动连续步进，到达目标日即停；遇缺料决策会暂停。</p>
+      </div>
+
+      <h2 class="ui-hidden">KPI 概览</h2>
+      <div class="kpi-grid ui-hidden" id="kpi-grid">
+        <div class="kpi-card"><span>当日计划总产量</span><strong id="kpi-planned">0</strong></div>
+        <div class="kpi-card"><span>当日实际总产量</span><strong id="kpi-produced">0</strong></div>
+        <div class="kpi-card"><span>缺料 SKU 数</span><strong id="kpi-shortage">0</strong></div>
+        <div class="kpi-card"><span>低于安全库存品种</span><strong id="kpi-below-ss">0</strong></div>
+        <div class="kpi-card"><span>在途采购单</span><strong id="kpi-open-po">0</strong></div>
+        <div class="kpi-card"><span>人工决策次数</span><strong id="kpi-manual">0</strong></div>
+      </div>
+    </aside>
+
+    <section class="panel panel-center">
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="policy">Policy</button>
+        <button type="button" class="tab" data-tab="dashboard">Dashboard</button>
+        <button type="button" class="tab" data-tab="production-plan">生产计划</button>
+        <button type="button" class="tab" data-tab="raw-material">原料库存</button>
+        <button type="button" class="tab" data-tab="shortage">采购订单Backlog</button>
+      </div>
+
+      <!-- Policy：生产 / 成品 SS / 原料策略 / 订单丢失规则 -->
+      <div class="tab-panel active" id="tab-policy">
+        <p class="hint">仿真策略集中配置。修改后通常需<strong>重置或继续步进</strong>以刷新 PO 与计划。</p>
+
+        <section class="policy-section card-block">
+          <h3 class="panel-subtitle">共线日产能（分时段预测）</h3>
+          <p class="hint">
+            站在<strong>当前仿真日</strong>，为<strong>当日及之后</strong>设定预计产能分布（正态，计划按<strong>均值</strong>截断；步进当日按分布抽样揭晓）。
+            已揭晓的历史产能不变；修改后自动刷新未来计划与 PO。
+          </p>
+          <div id="capacity-policy-asof" class="hint capacity-policy-asof"></div>
+          <div class="table-scroll capacity-forecast-scroll">
+            <table class="data-table data-table-compact" id="capacity-forecast-table">
+              <thead>
+                <tr>
+                  <th>起始日</th>
+                  <th>结束日</th>
+                  <th>均值</th>
+                  <th>90%下</th>
+                  <th>90%上</th>
+                  <th>上限</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="capacity-forecast-tbody"></tbody>
+            </table>
+          </div>
+          <div id="capacity-policy-info" class="hint"></div>
+          <div class="toolbar">
+            <button type="button" class="btn btn-sm" id="capacity-forecast-add">添加时段</button>
+            <button type="button" class="btn btn-sm btn-primary" id="capacity-forecast-apply">应用并刷新计划</button>
+            <button type="button" class="btn btn-sm" id="capacity-policy-default">恢复默认单段 180</button>
+          </div>
+        </section>
+
+        <section class="policy-section card-block">
+          <h3 class="panel-subtitle">订单交货</h3>
+          <div class="control-row policy-control-row">
+            <label for="order-lost-wait-days">交期后等待天数（超时整单丢失）</label>
+            <input type="number" id="order-lost-wait-days" min="0" max="90" step="1" value="7" />
+            <span class="hint-inline">不允许拆单；pending 订单超过交期 + 该天数仍未齐套则标记丢失。</span>
+          </div>
+        </section>
+
+        <section class="policy-section card-block">
+          <h3 class="panel-subtitle">生产设定（MOQ / Batch）</h3>
+          <p class="hint">日订单欠产与安全库存缺口<strong>分别</strong>累计至 MOQ；计划/实际产量均为 Batch 整数倍。</p>
+          <div class="toolbar">
+            <button type="button" class="btn btn-sm" id="prod-policy-default">恢复默认 MOQ=5 Batch=5</button>
+          </div>
+          <div class="scroll-list policy-grid" id="production-policy-list"></div>
+        </section>
+
+        <section class="policy-section card-block">
+          <h3 class="panel-subtitle">成品安全库存（SS）</h3>
+          <p class="hint">驱动成品 MRP 补产与 SS 批次；原料 PO 按生产日倒推。</p>
+          <div class="toolbar">
+            <button type="button" class="btn btn-sm" id="fg-ss-zero">恢复默认 SS=10</button>
+          </div>
+          <div class="scroll-list policy-grid" id="fg-safety-list"></div>
+        </section>
+
+        <section class="policy-section card-block">
+          <h3 class="panel-subtitle">原料策略 &amp; 供应商来料</h3>
+          <p class="hint"><strong>原料采购</strong>：对每个生产日 × 产量，下单日 = 生产日 − leadTimeDays；<strong>后续可改 PO</strong> 会扣减账面+在途盈余。</p>
+          <div class="control-row policy-control-row">
+            <label for="supplier-delay-probability">供应商延期发生概率（%）</label>
+            <input type="number" id="supplier-delay-probability" min="0" max="100" step="1" value="0" />
+          </div>
+          <div id="supplier-policy-info" class="hint"></div>
+          <h4 class="policy-subheading">原料 BOM 参考储备（只读，不参与 PO）</h4>
+          <div class="toolbar">
+            <input type="search" id="rm-ss-search" placeholder="搜索物料号或描述…" />
+          </div>
+          <div class="scroll-list policy-grid policy-grid-readonly" id="rm-safety-list"></div>
+        </section>
+      </div>
+
+      <div class="tab-panel" id="tab-dashboard">
+        <p class="hint">站在当前仿真日，展示未来 60 天<strong>预计</strong>日末指标（可行产量 + 需求预测 + 整单出库/丢失）。</p>
+        <div class="dashboard-kpi-grid" id="dashboard-kpi"></div>
+        <div class="inventory-chart-toolbar">
+          <label for="dashboard-sku-select">查看 SKU</label>
+          <select id="dashboard-sku-select" class="chart-material-select" aria-label="Dashboard 按 SKU 筛选趋势与表格"></select>
+        </div>
+        <div class="dashboard-charts-stack">
+          <h3 class="panel-subtitle">日末待交 backlog / 累计丢失 · 竖线=今天</h3>
+          <div id="chart-dashboard-delivery" class="trend-chart-wrap trend-chart-scrollable"></div>
+          <h3 class="panel-subtitle">成品库存 · 竖线=今天 · 左实线=已发生 · 右虚线=预计</h3>
+          <div id="chart-dashboard-inventory" class="trend-chart-wrap trend-chart-scrollable"></div>
+        </div>
+        <h3 class="panel-subtitle">未来每日预计（60 天）</h3>
+        <div class="table-scroll">
+          <table class="data-table data-table-compact" id="dashboard-daily-table">
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>预计可用库存</th>
+                <th>出库前需交</th>
+                <th>预计产量</th>
+                <th>日末仍待 backlog</th>
+                <th>待交笔数</th>
+                <th>当日丢失</th>
+                <th>累计丢失</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <details class="schedule-table-details">
+          <summary>当前未交 / 已丢失订单明细</summary>
+          <div class="table-scroll">
+            <table class="data-table data-table-compact" id="dashboard-order-table">
+              <thead>
+                <tr>
+                  <th>交期</th>
+                  <th>SKU</th>
+                  <th>描述</th>
+                  <th>数量</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+
+      <div class="tab-panel" id="tab-production-plan">
+        <p class="hint">蓝柱 = 已步进完成的<strong>实际产量</strong>（仅今天之前）；橙虚线柱 = <strong>今天及未来</strong>的可行日计划产量。竖线 = 今天。当天尚未步进时不显示蓝柱，步进后前一日变为蓝柱。</p>
+        <div class="inventory-chart-toolbar">
+          <label for="production-plan-sku-select">查看 SKU</label>
+          <select id="production-plan-sku-select" class="chart-material-select" aria-label="按 SKU 选择生产计划趋势"></select>
+        </div>
+        <div id="chart-production-plan" class="production-plan-chart-wrap trend-chart-scrollable"></div>
+      </div>
+
+      <div class="tab-panel" id="tab-raw-material">
+        <p class="hint">步进后累积<strong>日末原料库存</strong>。竖线=今天，左实线=已发生，右虚线=未来预计。下方明细与「查看物料」联动。</p>
+        <div class="inventory-chart-toolbar">
+          <label for="raw-material-chart-select">查看物料</label>
+          <select id="raw-material-chart-select" class="chart-material-select" aria-label="按物料描述选择原料库存趋势"></select>
+        </div>
+        <div id="chart-inventory-raw" class="trend-chart-wrap trend-chart-scrollable"></div>
+        <p class="hint">下表与上方所选物料联动；选「全部原料合计」时显示有库存/在途明细（最多 40 条）。</p>
+        <table class="data-table" id="inventory-table">
+          <thead>
+            <tr>
+              <th>物料号</th>
+              <th>描述</th>
+              <th>库存</th>
+              <th>在途</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="tab-panel" id="tab-shortage">
+        <p class="hint">供应商来料 backlog：在途 PO（含延期抽样后的到货日）。竖线=今天，左实线=已发生，右虚线=未来预计。</p>
+        <div class="inventory-chart-toolbar">
+          <label for="in-transit-chart-select">查看物料</label>
+          <select id="in-transit-chart-select" class="chart-material-select" aria-label="按物料描述选择在途来料趋势"></select>
+        </div>
+        <div id="chart-in-transit" class="trend-chart-wrap trend-chart-scrollable"></div>
+        <div class="shortage-summary" id="shortage-summary"></div>
+        <h3 class="panel-subtitle">当日 SKU 齐套概览</h3>
+        <table class="data-table" id="shortage-sku-table">
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>描述</th>
+              <th>日计划</th>
+              <th>可执行产量</th>
+              <th>齐套</th>
+              <th>缺料原料数</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <h3 class="panel-subtitle">原料缺料明细</h3>
+        <p class="hint">可用 = 账面库存 + 当日计划到货（步进后入库）。</p>
+        <div class="table-scroll">
+          <table class="data-table" id="shortage-material-table">
+            <thead>
+              <tr>
+                <th>原料号</th>
+                <th>描述</th>
+                <th>关联 SKU</th>
+                <th>需求量</th>
+                <th>可用</th>
+                <th>缺口</th>
+                <th>账面库存</th>
+                <th>当日到货</th>
+                <th>在途</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 多 SKU 可转产：人工生产决策 -->
+  <dialog id="decision-modal" class="modal">
+    <form method="dialog" id="decision-form">
+      <header class="modal-header">
+        <h2>当日生产调整</h2>
+        <p id="decision-desc">多个 SKU 可齐套生产，请手动指定当日各 SKU 实际产量。</p>
+      </header>
+      <div class="modal-body" id="decision-body"></div>
+      <footer class="modal-footer">
+        <button type="submit" class="btn btn-primary" value="confirm">确认并继续</button>
+        <button type="button" class="btn btn-ghost" id="decision-skip">当日不生产</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/main.js?v=20260620c"></script>
+</body>
+</html>
