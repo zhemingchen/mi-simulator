@@ -11,8 +11,13 @@
     <div class="upload-card">
       <header class="upload-header">
         <h1>Ask Rainman</h1>
-        <p>先上传 7 个 CSV，再在浏览器本地运行仿真。页面关闭后，数据不会保存。</p>
+        <p>一次选择或拖入 7 个 CSV 后，在浏览器本地运行仿真。页面关闭后，数据不会保存。</p>
       </header>
+      <label class="upload-bulk-drop" id="csv-drop-zone">
+        <span class="upload-bulk-title">选择或拖入 CSV 文件</span>
+        <span>支持同时选择多个文件；系统按文件名自动匹配。</span>
+        <input type="file" id="csv-bulk-files" accept=".csv,text/csv" multiple />
+      </label>
       <div class="upload-grid" id="upload-grid">
         <label class="upload-field">
           <span>products.csv</span>
@@ -48,7 +53,8 @@
         </div>
       <p class="upload-status" id="upload-status">等待上传。</p>
       <ul class="upload-notes">
-        <li>字段名需与文件名对应；文件顺序无要求。</li>
+        <li>文件名需为 products.csv、materials.csv、bom.csv、demand-notices.csv、safety-stock.csv、production-policy.csv、supplier-policy.csv。</li>
+        <li>下方单独上传框可用于替换某一个文件；文件顺序无要求。</li>
         <li>CSV 仅在当前浏览器内存中使用，不写入服务器。</li>
         <li>CSV 仅在当前浏览器内存中使用，页面公开不代表数据公开。</li>
       </ul>
@@ -334,6 +340,6 @@
     </form>
   </dialog>
 
-  <script type="module" src="js/main.js?v=20260620c"></script>
+  <script type="module" src="js/main.js?v=20260623a"></script>
 </body>
 </html>

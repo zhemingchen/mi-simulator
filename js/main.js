@@ -42,6 +42,7 @@ import {
 let sim = null;
 let master = null;
 let appBooted = false;
+let bulkCsvFiles = [];
 
 function setUploadStatus(message, tone = '') {
   const node = document.getElementById('upload-status');
@@ -57,16 +58,42 @@ function showAppShell() {
   document.getElementById('app-main')?.classList.remove('ui-hidden');
 }
 
-function collectCsvFiles() {
+function buildCsvFileMap(files) {
+  const byFileName = new Map(CSV_DATASET_SPECS.map((spec) => [spec.fileName.toLowerCase(), spec]));
   const fileMap = {};
+  for (const file of Array.from(files ?? [])) {
+    const spec = byFileName.get(String(file.name ?? '').toLowerCase());
+    if (spec) fileMap[spec.key] = file;
+  }
+  return fileMap;
+}
+
+function describeCsvSelection(files) {
+  const fileMap = buildCsvFileMap(files);
+  const matched = CSV_DATASET_SPECS.filter((spec) => fileMap[spec.key]).length;
+  const missing = CSV_DATASET_SPECS.filter((spec) => !fileMap[spec.key]).map((spec) => spec.fileName);
+  if (!matched) {
+    setUploadStatus('未匹配到所需 CSV。请检查文件名。', 'is-error');
+    return;
+  }
+  if (missing.length) {
+    setUploadStatus(`已匹配 ${matched}/7，仍缺少：${missing.join('、')}`);
+    return;
+  }
+  setUploadStatus('已匹配 7/7 个 CSV，可以启动。', 'is-success');
+}
+
+function collectCsvFiles() {
+  const fileMap = buildCsvFileMap(bulkCsvFiles);
+  const bulkInput = document.getElementById('csv-bulk-files');
+  Object.assign(fileMap, buildCsvFileMap(bulkInput?.files));
   for (const spec of CSV_DATASET_SPECS) {
     const input = document.getElementById(`csv-${camelToKebab(spec.key)}`);
     const file = input?.files?.[0];
-    if (!file) {
-      throw new Error(`请上传 ${spec.fileName}`);
-    }
-    fileMap[spec.key] = file;
+    if (file) fileMap[spec.key] = file;
   }
+  const missing = CSV_DATASET_SPECS.filter((spec) => !fileMap[spec.key]).map((spec) => spec.fileName);
+  if (missing.length) throw new Error(`缺少文件：${missing.join('、')}`);
   return fileMap;
 }
 
@@ -129,6 +156,27 @@ async function syncBundledSampleButton() {
 }
 
 function bindUploadScreen() {
+  const bulkInput = document.getElementById('csv-bulk-files');
+  bulkInput?.addEventListener('change', () => {
+    bulkCsvFiles = Array.from(bulkInput.files ?? []);
+    describeCsvSelection(bulkCsvFiles);
+  });
+
+  const dropZone = document.getElementById('csv-drop-zone');
+  dropZone?.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('is-dragover');
+  });
+  dropZone?.addEventListener('dragleave', () => {
+    dropZone.classList.remove('is-dragover');
+  });
+  dropZone?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('is-dragover');
+    bulkCsvFiles = Array.from(e.dataTransfer?.files ?? []);
+    describeCsvSelection(bulkCsvFiles);
+  });
+
   document.getElementById('btn-upload-start')?.addEventListener('click', async () => {
     try {
       setUploadStatus('正在读取 CSV…');
